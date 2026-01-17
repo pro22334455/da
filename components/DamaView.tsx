@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DamaBoard, DamaPiece, User, Room } from '../types';
-import Lobby from './Lobby';
+import Lobby from '../Lobby';
 import { db, ref, onValue, update, remove, push } from '../firebaseService';
 
 interface DamaViewProps {
@@ -26,7 +25,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const [p1Time, setP1Time] = useState(0);
   const [p2Time, setP2Time] = useState(0);
 
-  const [chatMessages, setChatMessages] = useState<{sender: string, text: string}[]>([]);
+  const [chatMessages, setChatMessages] = useState<{sender: string, text: string, time: number}[]>([]);
   const [chatInput, setChatInput] = useState('');
   
   const [isMicOn, setIsMicOn] = useState(false);
@@ -41,6 +40,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     const unsubscribe = onValue(gameRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
+      
       if (data.status === 'playing' && data.opponent && !gameStarted) {
         setOpponent(data.opponent.id === currentUser.id ? data.creator : data.opponent);
         setGameStarted(true);
@@ -55,11 +55,15 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           });
         }
       }
+      
       if (data.board) setBoard(data.board);
       if (data.turn) setTurn(data.turn);
       if (data.p1Time !== undefined) setP1Time(data.p1Time);
       if (data.p2Time !== undefined) setP2Time(data.p2Time);
-      if (data.chat) setChatMessages(Object.values(data.chat));
+      if (data.chat) {
+        const msgs = Object.values(data.chat) as any[];
+        setChatMessages(msgs.sort((a,b) => a.time - b.time));
+      }
       if (data.voiceActivity) {
         const oppId = playerRole === 1 ? 'p2' : 'p1';
         setIsOpponentSpeaking(!!data.voiceActivity[oppId]);
@@ -67,7 +71,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       if (data.status === 'closed') resetState();
     });
     return () => unsubscribe();
-  }, [activeRoom, playerRole, gameStarted, currentUser, turn]);
+  }, [activeRoom, playerRole, gameStarted, currentUser]);
 
   const toggleMic = async () => {
     if (!isMicOn) {
@@ -79,7 +83,9 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           const roleKey = playerRole === 1 ? 'p1' : 'p2';
           update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: true });
         }
-      } catch (err) { alert("يرجى تفعيل إذن المايكروفون من إعدادات المتصفح"); }
+      } catch (err) { 
+        alert("يرجى تفعيل إذن المايكروفون من إعدادات المتصفح للاستمتاع بالدردشة الصوتية"); 
+      }
     } else {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       setIsMicOn(false);
@@ -260,14 +266,14 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         
         {/* Top bar */}
         <div className="w-full max-w-[620px] flex items-center justify-between">
-           <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 border border-white/5">
+           <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 border border-white/5 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
            </button>
            <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">مباشر</span>
+              <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">خادم حي</span>
            </div>
-           <button onClick={handleLeaveRoom} className="p-3 bg-rose-500/10 hover:bg-rose-500/20 rounded-2xl text-rose-500 border border-rose-500/20">
+           <button onClick={handleLeaveRoom} className="p-3 bg-rose-500/10 hover:bg-rose-500/20 rounded-2xl text-rose-500 border border-rose-500/20 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
            </button>
         </div>
@@ -275,22 +281,28 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         {/* Opponent Card */}
         <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 rounded-3xl border border-white/5">
            <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all ${isOpponentSpeaking ? 'border-emerald-500 scale-105 shadow-emerald-500/20' : 'border-white/10'}`}>
+              <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all duration-300 ${isOpponentSpeaking ? 'border-emerald-500 scale-105 shadow-lg shadow-emerald-500/20' : 'border-white/10'}`}>
                 <img src={opponent?.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h4 className="font-black text-slate-400 text-sm">{opponent?.username || "انتظار الخصم..."}</h4>
+                <h4 className="font-black text-slate-400 text-sm truncate max-w-[120px]">{opponent?.username || "انتظار الخصم..."}</h4>
                 <div className={`text-xl font-mono font-black ${turn === (playerRole === 1 ? 2 : 1) ? 'text-amber-500 animate-pulse' : 'text-slate-700'}`}>
                   {formatTime(playerRole === 1 ? p2Time : p1Time)}
                 </div>
               </div>
            </div>
-           {isOpponentSpeaking && <div className="flex gap-1 items-center px-3 py-1 bg-emerald-500/10 rounded-full"><span className="w-1 h-3 bg-emerald-500 animate-bounce"></span><span className="w-1 h-5 bg-emerald-500 animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-3 bg-emerald-500 animate-bounce [animation-delay:-0.4s]"></span></div>}
+           {isOpponentSpeaking && (
+              <div className="flex gap-1 items-center px-3 py-2 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                <span className="w-1 h-3 bg-emerald-500 animate-bounce"></span>
+                <span className="w-1 h-5 bg-emerald-500 animate-bounce [animation-delay:-0.2s]"></span>
+                <span className="w-1 h-3 bg-emerald-500 animate-bounce [animation-delay:-0.4s]"></span>
+              </div>
+           )}
         </div>
 
         {/* The Board */}
         <div className="relative aspect-square w-full max-w-[500px] bg-[#1a120b] p-2 md:p-4 rounded-[2rem] shadow-2xl border-[10px] border-[#2c1e14]">
-          <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
+          <div className="grid grid-cols-8 grid-rows-8 w-full h-full rounded-lg overflow-hidden border border-black/40">
             {board.map((row, r) => row.map((piece, c) => {
               const isDark = (r + c) % 2 === 0;
               const isSelected = selected?.[0] === r && selected?.[1] === c;
@@ -300,8 +312,8 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
                   {isHighlight && <div className="absolute w-3 h-3 md:w-4 md:h-4 rounded-full bg-emerald-400 z-10 animate-pulse"></div>}
                   {isSelected && <div className="absolute inset-0 bg-amber-400/20 border-2 border-amber-400 z-20"></div>}
                   {piece && (
-                    <div className={`w-[82%] h-[82%] rounded-full shadow-2xl flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110 -translate-y-1' : 'scale-100'} border-2 border-black/20`}>
-                      {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 md:w-8 md:h-8 text-amber-300" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
+                    <div className={`w-[82%] h-[82%] rounded-full piece-shadow flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110 -translate-y-1' : 'scale-100'} border-2 border-black/20`}>
+                      {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 md:w-8 md:h-8 text-amber-300 drop-shadow-lg" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
                     </div>
                   )}
                 </div>
@@ -313,7 +325,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         {/* My Card */}
         <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 rounded-3xl border border-indigo-500/20">
            <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all ${isMicOn ? 'border-emerald-500 shadow-emerald-500/20' : 'border-indigo-500'}`}>
+              <div className={`w-14 h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all ${isMicOn ? 'border-emerald-500 shadow-emerald-500/20 shadow-lg' : 'border-indigo-500'}`}>
                 <img src={currentUser.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
@@ -323,20 +335,23 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
                 </div>
               </div>
            </div>
-           <button onClick={toggleMic} className={`p-4 rounded-2xl transition-all border ${isMicOn ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-slate-800 text-slate-400 border-white/5'}`}>
+           <button onClick={toggleMic} className={`p-4 rounded-2xl transition-all border ${isMicOn ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 border-white/5 hover:border-white/20'}`}>
              {isMicOn ? <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg> : <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" /></svg>}
            </button>
         </div>
       </div>
 
-      {/* Modern Desktop Chat Panel */}
+      {/* Chat Panel */}
       <div className="w-80 border-r border-white/5 glass flex flex-col hidden lg:flex">
-         <div className="p-6 border-b border-white/5"><h3 className="font-black text-white text-xs uppercase tracking-widest">المحادثة المباشرة</h3></div>
+         <div className="p-6 border-b border-white/5 flex items-center justify-between">
+           <h3 className="font-black text-white text-xs uppercase tracking-widest">المحادثة المباشرة</h3>
+           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+         </div>
          <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
             {chatMessages.map((msg, i) => (
                <div key={i} className={`flex flex-col ${msg.sender === currentUser.username ? 'items-start' : 'items-end'}`}>
-                  <span className="text-[10px] text-slate-500 mb-1">{msg.sender}</span>
-                  <div className={`px-4 py-2 rounded-2xl text-xs max-w-[85%] ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-200 border border-white/5'}`}>{msg.text}</div>
+                  <span className="text-[10px] text-slate-500 mb-1 px-2">{msg.sender}</span>
+                  <div className={`px-4 py-2 rounded-2xl text-xs max-w-[90%] shadow-lg ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tl-none'}`}>{msg.text}</div>
                </div>
             ))}
          </div>
@@ -347,16 +362,16 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
 
       {/* Rules Modal */}
       {showRules && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
-           <div className="glass w-full max-w-lg p-10 rounded-[3rem] border border-white/10">
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+           <div className="glass w-full max-w-lg p-10 rounded-[3rem] border border-white/10 shadow-2xl">
               <h2 className="text-3xl font-black mb-8 text-white">قواعد اللعبة</h2>
               <ul className="space-y-4 text-slate-300 font-medium">
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs">1</span> القفز إلزامي عند توفر فرصة لأكل حجر الخصم.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs">2</span> الأكل المتعدد إلزامي؛ يجب إكمال سلسلة القفزات.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs">3</span> يتحول الحجر إلى "ملك" عند وصوله للصف الأخير للخصم.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs">4</span> الملك يتحرك في جميع الاتجاهات وبأي مسافة.</li>
+                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black">1</span> القفز إلزامي عند توفر فرصة لأكل حجر الخصم.</li>
+                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black">2</span> الأكل المتعدد إلزامي؛ يجب إكمال سلسلة القفزات.</li>
+                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black">3</span> يتحول الحجر إلى "ملك" عند وصوله للصف الأخير للخصم.</li>
+                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black">4</span> الملك يتحرك في جميع الاتجاهات وبأي مسافة على نفس الوتر.</li>
               </ul>
-              <button onClick={() => setShowRules(false)} className="w-full mt-10 py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-sm">فهمت ذلك</button>
+              <button onClick={() => setShowRules(false)} className="w-full mt-10 py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">فهمت ذلك</button>
            </div>
         </div>
       )}
