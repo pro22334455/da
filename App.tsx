@@ -7,7 +7,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('lumina_current_user');
+    const saved = sessionStorage.getItem('ibra_dama_current_user');
     if (saved) {
       setCurrentUser(JSON.parse(saved));
     }
@@ -15,20 +15,20 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    sessionStorage.setItem('lumina_current_user', JSON.stringify(user));
+    sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(user));
   };
 
   const handleUpdatePoints = (p: number) => {
     if (currentUser) {
       const updated = { ...currentUser, points: currentUser.points + p };
       setCurrentUser(updated);
-      sessionStorage.setItem('lumina_current_user', JSON.stringify(updated));
+      sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(updated));
 
-      const users = JSON.parse(localStorage.getItem('lumina_users') || '[]');
+      const users = JSON.parse(localStorage.getItem('ibra_dama_users') || '[]');
       const userIndex = users.findIndex((u: any) => u.id === currentUser.id);
       if (userIndex !== -1) {
         users[userIndex].points += p;
-        localStorage.setItem('lumina_users', JSON.stringify(users));
+        localStorage.setItem('ibra_dama_users', JSON.stringify(users));
       }
     }
   };
@@ -43,7 +43,6 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full overflow-hidden bg-[#020617] text-slate-100 font-inter select-none" dir="rtl">
-      {/* واجهة اللعبة الأساسية مباشرة بدون شريط جانبي */}
       <DamaView currentUser={currentUser} onUpdatePoints={handleUpdatePoints} />
     </div>
   );
