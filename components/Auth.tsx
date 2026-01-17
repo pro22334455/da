@@ -1,67 +1,143 @@
-import React, { useState, useEffect } from 'react';
-import { User } from './types';
-import DamaView from './components/DamaView';
-import Auth from './components/Auth';
+import React, { useState } from 'react';
+import { User } from '../types';
+import { db, ref, set, get } from '../firebaseService';
 
-const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+interface AuthProps {
+  onLogin: (user: User) => void;
+}
 
-  useEffect(() => {
-    // طلب إذن الميكروفون فور تشغيل التطبيق (قبل تسجيل الدخول)
-    const requestInitialPermissions = async () => {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // إيقاف المسار فوراً بعد التأكد من الحصول على الإذن
-          stream.getTracks().forEach(track => track.stop());
-          console.log("Microphone permission pre-granted.");
+const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    // استخدام قاعدة بيانات حقيقية أو Mock بناءً على الإعدادات
+    const usersRef = ref(db, 'users');
+    
+    try {
+      const snapshot = await get(usersRef);
+      const allUsers = snapshot.val() || {};
+
+      if (isLogin) {
+        const foundId = Object.keys(allUsers).find(
+          id => allUsers[id].username === username && allUsers[id].password === password
+        );
+        
+        if (foundId) {
+          const u = allUsers[foundId];
+          onLogin({ 
+            id: foundId, 
+            username: u.username, 
+            points: u.points || 0, 
+            avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`
+          });
+        } else {
+          alert("خطأ في بيانات الدخول");
         }
-      } catch (err) {
-        console.warn("Microphone permission not granted at startup:", err);
+      } else {
+        const exists = Object.values(allUsers).some((u: any) => u.username === username);
+        if (exists) {
+          alert("اسم المستخدم موجود مسبقاً");
+          setIsLoading(false);
+          return;
+        }
+        
+        const userId = Math.random().toString(36).substr(2, 9);
+        const newUser = {
+          username,
+          password,
+          points: 0,
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+        };
+        
+        await set(ref(db, `users/${userId}`), newUser);
+        onLogin({ id: userId, ...newUser });
       }
-    };
-
-    requestInitialPermissions();
-
-    const saved = sessionStorage.getItem('ibra_dama_current_user');
-    if (saved) {
-      setCurrentUser(JSON.parse(saved));
-    }
-  }, []);
-
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(user));
-  };
-
-  const handleUpdatePoints = (p: number) => {
-    if (currentUser) {
-      const updated = { ...currentUser, points: currentUser.points + p };
-      setCurrentUser(updated);
-      sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(updated));
-
-      const users = JSON.parse(localStorage.getItem('ibra_dama_users') || '[]');
-      const userIndex = users.findIndex((u: any) => u.id === currentUser.id);
-      if (userIndex !== -1) {
-        users[userIndex].points += p;
-        localStorage.setItem('ibra_dama_users', JSON.stringify(users));
-      }
+    } catch (error) {
+      console.error(error);
+      alert("فشل الاتصال بقاعدة البيانات");
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  if (!currentUser) {
-    return (
-      <div className="h-screen w-full bg-[#020617] flex items-center justify-center font-inter" dir="rtl">
-        <Auth onLogin={handleLogin} />
-      </div>
-    );
-  }
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-[#020617] text-slate-100 font-inter select-none" dir="rtl">
-      <DamaView currentUser={currentUser} onUpdatePoints={handleUpdatePoints} />
+    <div className="flex flex-col items-center justify-center h-full bg-slate-950 p-6 w-full animate-in fade-in duration-700">
+      <div className="w-full max-w-md glass p-10 rounded-[2.5rem] border border-white/10 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4">
+           <div className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Ibra Dama Server</span>
+           </div>
+        </div>
+
+        <div className="text-center mb-10">
+          <div className="inline-flex p-4 rounded-3xl bg-indigo-600/20 mb-4 shadow-inner">
+            <h1 className="text-4xl font-black text-indigo-500 tracking-tighter italic">ID</h1>
+          </div>
+          <h2 className="text-3xl font-black bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent mb-1">
+            Ibra Dama
+          </h2>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em]">
+            {isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">اسم المستخدم</label>
+            <input
+              required
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 text-white focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all font-bold"
+              placeholder="Nickname"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">كلمة المرور</label>
+            <input
+              required
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 text-white focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all font-bold"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 transform active:scale-95"
+          >
+            {isLoading ? (
+              <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              isLogin ? 'دخول اللعبة' : 'ابدأ المنافسة'
+            )}
+          </button>
+        </form>
+
+        <button
+          onClick={() => setIsLogin(!isLogin)}
+          className="w-full mt-8 text-sm text-slate-500 hover:text-white transition-colors font-bold tracking-tight"
+        >
+          {isLogin ? 'لا تملك حساب؟ انضم إلى إبراهيم دامة' : 'تملك حساب؟ سجل دخولك'}
+        </button>
+      </div>
     </div>
   );
 };
 
-export default App;
+export default Auth;
