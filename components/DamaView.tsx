@@ -1,9 +1,7 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DamaBoard, DamaPiece, User, Room } from '../types';
 import Lobby from './Lobby';
-// Fixed: Added 'push' to the imported functions from firebaseService.
-import { db, ref, onValue, set, update, remove, updateGlobalUserPoints, push } from '../firebaseService';
+import { db, ref, onValue, set, update, remove, push } from '../firebaseService';
 
 interface DamaViewProps {
   currentUser: User;
@@ -32,12 +30,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const calculatePoints = (time: number) => {
-    if (time <= 1) return 10;
-    if (time <= 2) return 8;
-    if (time <= 3) return 6;
-    if (time <= 5) return 3;
-    if (time <= 7) return 2;
-    return 1;
+    return Math.max(1, 10 - Math.floor(time / 2));
   };
 
   useEffect(() => {
@@ -72,7 +65,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       }
 
       if (data.status === 'closed') {
-        alert("انتهت الجلسة أو غادر الخصم.");
         resetState();
       }
     });
@@ -92,7 +84,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const handleLeaveRoom = async () => {
     if (activeRoom) {
       await update(ref(db, `rooms/${activeRoom.id}`), { status: 'closed' });
-      // Clean up waiting rooms if creator leaves
       if (playerRole === 1 && !gameStarted) {
         await remove(ref(db, `rooms/${activeRoom.id}`));
       }
@@ -100,7 +91,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     resetState();
   };
 
-  // Timer sync logic (only creator manages the timer to prevent conflicts)
   useEffect(() => {
     if (!gameStarted || playerRole !== 1 || !activeRoom) return;
     const interval = setInterval(() => {
@@ -108,11 +98,9 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       if (turn === 1) {
         const next = Math.max(0, p1Time - 1);
         update(gameRef, { p1Time: next });
-        if (next === 0) alert("انتهى وقت اللاعب 1!");
       } else {
         const next = Math.max(0, p2Time - 1);
         update(gameRef, { p2Time: next });
-        if (next === 0) alert("انتهى وقت اللاعب 2!");
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -141,17 +129,14 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
-      const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+      osc.frequency.setValueAtTime(150, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
       osc.connect(gain).connect(ctx.destination);
       osc.start();
-      osc.stop(now + 0.1);
+      osc.stop(ctx.currentTime + 0.1);
     } catch (e) {}
   }, []);
 
@@ -266,7 +251,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         playMoveSound();
         const newBoard = board.map(row => [...row]);
         const piece = newBoard[sr][sc]!;
-        let nextTurn = turn;
         if (pendingSequences) {
            const seq = pendingSequences.find(s => s[0].to[0] === r && s[0].to[1] === c);
            newBoard[seq[0].cap[0]][seq[0].cap[1]] = null;
@@ -278,7 +262,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
               setSelected([r, c]);
               setPendingSequences([remaining]);
               setHighlights([[remaining[0].to[0], remaining[0].to[1]]]);
-              // Local update only until sequence complete? No, update Firebase to keep both in sync
               update(ref(db, `rooms/${activeRoom.id}`), { board: newBoard });
               return;
            }
@@ -287,11 +270,8 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           newBoard[r][c] = piece;
         }
         if ((piece.player === 1 && r === 7) || (piece.player === 2 && r === 0)) piece.king = true;
-        nextTurn = turn === 1 ? 2 : 1;
-        
-        // Final Sync to Firebase
+        const nextTurn = turn === 1 ? 2 : 1;
         update(ref(db, `rooms/${activeRoom.id}`), { board: newBoard, turn: nextTurn });
-        
         setSelected(null);
         setHighlights([]);
         setPendingSequences(null);
@@ -306,16 +286,11 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeRoom) return;
     const chatRef = ref(db, `rooms/${activeRoom.id}/chat`);
-    const newMessage = { sender: currentUser.username, text: chatInput, time: Date.now() };
-    await push(chatRef, newMessage);
+    await push(chatRef, { sender: currentUser.username, text: chatInput, time: Date.now() });
     setChatInput('');
   };
 
-  const formatTime = (s: number) => {
-    const mins = Math.floor(s / 60);
-    const secs = s % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (s: number) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
 
   if (!activeRoom) {
     return <Lobby currentUser={currentUser} onJoinRoom={handleJoinOrCreate} rooms={allRooms} onRoomsUpdate={setAllRooms} />;
@@ -323,32 +298,25 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
 
   return (
     <div className="flex h-full bg-slate-950 overflow-hidden relative">
-      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-8">
-        
-        {/* Opponent Info */}
-        <div className="w-full max-w-[620px] flex items-center justify-between glass p-5 rounded-3xl border border-white/5 shadow-2xl">
-           <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl overflow-hidden border border-white/10 bg-slate-800 shadow-xl">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 gap-6 md:gap-8">
+        <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 md:p-5 rounded-3xl border border-white/5 shadow-2xl">
+           <div className="flex items-center gap-4 md:gap-5">
+              <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/10 bg-slate-800 shadow-xl">
                 <img src={opponent?.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h4 className="font-black text-slate-400 text-lg">{opponent?.username || "Searching..."}</h4>
-                <div className={`text-2xl font-mono font-black ${turn === (playerRole === 1 ? 2 : 1) ? 'text-amber-500 animate-pulse' : 'text-slate-700'}`}>
+                <h4 className="font-black text-slate-400 text-base md:text-lg">{opponent?.username || "في انتظار الخصم..."}</h4>
+                <div className={`text-xl md:text-2xl font-mono font-black ${turn === (playerRole === 1 ? 2 : 1) ? 'text-amber-500 animate-pulse' : 'text-slate-700'}`}>
                   {formatTime(playerRole === 1 ? p2Time : p1Time)}
                 </div>
               </div>
            </div>
-           
-           <button 
-             onClick={handleLeaveRoom}
-             className="p-4 text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/30"
-           >
-             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+           <button onClick={handleLeaveRoom} className="p-3 md:p-4 text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/30">
+             <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
            </button>
         </div>
 
-        {/* Board */}
-        <div className="relative aspect-square w-full max-w-[580px] bg-[#2a1d15] p-4 rounded-[2.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.9)] border-[16px] border-[#3d2b1f] overflow-hidden">
+        <div className="relative aspect-square w-full max-w-[540px] bg-[#2a1d15] p-2 md:p-4 rounded-[1.5rem] md:rounded-[2.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.9)] border-[8px] md:border-[16px] border-[#3d2b1f] overflow-hidden">
           <div className="grid grid-cols-8 grid-rows-8 w-full h-full shadow-2xl">
             {board.map((row, r) => row.map((piece, c) => {
               const isDark = (r + c) % 2 === 0;
@@ -356,11 +324,11 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
               const isHighlight = highlights.some(h => h[0] === r && h[1] === c);
               return (
                 <div key={`${r}-${c}`} onClick={() => handleCellClick(r, c)} className={`relative flex items-center justify-center cursor-pointer ${isDark ? 'bg-[#5d4037]' : 'bg-[#d7ccc8]'}`}>
-                  {isHighlight && <div className="absolute w-5 h-5 rounded-full bg-emerald-400 z-10 shadow-[0_0_20px_rgba(52,211,153,1)] animate-pulse"></div>}
-                  {isSelected && <div className="absolute inset-0 bg-amber-400/20 border-[4px] border-amber-400 z-20"></div>}
+                  {isHighlight && <div className="absolute w-3 h-3 md:w-5 md:h-5 rounded-full bg-emerald-400 z-10 shadow-[0_0_20px_rgba(52,211,153,1)] animate-pulse"></div>}
+                  {isSelected && <div className="absolute inset-0 bg-amber-400/20 border-[2px] md:border-[4px] border-amber-400 z-20"></div>}
                   {piece && (
-                    <div className={`w-[85%] h-[85%] rounded-full shadow-[0_10px_20px_rgba(0,0,0,0.5)] flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 via-rose-600 to-red-900' : 'bg-gradient-to-br from-cyan-400 via-cyan-600 to-indigo-900'} ${isSelected ? 'scale-110 -translate-y-2' : 'scale-100'} border-[3px] border-black/30`}>
-                      {piece.king && <svg viewBox="0 0 24 24" className="w-10 h-10 text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
+                    <div className={`w-[85%] h-[85%] rounded-full shadow-[0_5px_10px_rgba(0,0,0,0.5)] flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110 -translate-y-1' : 'scale-100'} border-[2px] md:border-[3px] border-black/30`}>
+                      {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 md:w-10 md:h-10 text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
                     </div>
                   )}
                 </div>
@@ -369,39 +337,34 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           </div>
         </div>
 
-        {/* My Info */}
-        <div className="w-full max-w-[620px] flex items-center justify-between glass p-5 rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
-           <div className="flex items-center gap-5">
-              <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-indigo-500 bg-slate-800 shadow-2xl">
+        <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 md:p-5 rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+           <div className="flex items-center gap-4 md:gap-5">
+              <div className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 md:border-4 border-indigo-500 bg-slate-800 shadow-2xl">
                 <img src={currentUser.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h4 className="font-black text-white text-xl">{currentUser.username} <span className="text-[10px] text-indigo-400 ml-1">(YOU)</span></h4>
-                <div className={`text-3xl font-mono font-black ${turn === playerRole ? 'text-indigo-400 animate-pulse' : 'text-slate-700'}`}>
+                <h4 className="font-black text-white text-lg md:text-xl">{currentUser.username}</h4>
+                <div className={`text-2xl md:text-3xl font-mono font-black ${turn === playerRole ? 'text-indigo-400 animate-pulse' : 'text-slate-700'}`}>
                   {formatTime(playerRole === 1 ? p1Time : p2Time)}
                 </div>
               </div>
            </div>
            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Winning Bonus</span>
-              <span className="text-3xl font-black text-emerald-400">+{calculatePoints(activeRoom.timeLimit)}</span>
+              <span className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest font-black">جائزة الفوز</span>
+              <span className="text-2xl md:text-3xl font-black text-emerald-400">+{calculatePoints(activeRoom.timeLimit)}</span>
            </div>
         </div>
       </div>
 
-      {/* Global Chat Side Panel */}
-      <div className="w-96 border-l border-white/5 glass flex flex-col hidden xl:flex">
-         <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5 backdrop-blur-3xl">
-            <h3 className="font-black flex items-center gap-3 text-lg uppercase tracking-tighter">
-               <span className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
-               Live Room Chat
-            </h3>
+      <div className="w-80 border-l border-white/5 glass flex flex-col hidden lg:flex">
+         <div className="p-6 border-b border-white/5 bg-white/5">
+            <h3 className="font-black flex items-center gap-3 text-lg uppercase tracking-tighter text-white">دردشة الغرفة</h3>
          </div>
-         <div className="flex-1 p-6 overflow-y-auto space-y-4 custom-scrollbar">
+         <div className="flex-1 p-6 overflow-y-auto space-y-4">
             {chatMessages.map((msg, i) => (
-               <div key={i} className={`flex flex-col ${msg.sender === currentUser.username ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}>
+               <div key={i} className={`flex flex-col ${msg.sender === currentUser.username ? 'items-end' : 'items-start'}`}>
                   <span className="text-[10px] text-slate-500 mb-1 font-black uppercase tracking-widest">{msg.sender}</span>
-                  <div className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] font-medium shadow-lg ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 rounded-tl-none border border-white/5'}`}>
+                  <div className={`px-4 py-2 rounded-2xl text-sm max-w-[90%] ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-100 border border-white/5'}`}>
                      {msg.text}
                   </div>
                </div>
@@ -412,8 +375,8 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
               type="text" 
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="اكتب رسالتك للخصم..."
-              className="w-full bg-slate-950 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all placeholder:text-slate-600 font-bold"
+              placeholder="ارسل رسالة للخصم..."
+              className="w-full bg-slate-950 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-white font-bold"
             />
          </form>
       </div>
