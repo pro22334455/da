@@ -27,6 +27,10 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const [chatMessages, setChatMessages] = useState<{sender: string, text: string}[]>([]);
   const [chatInput, setChatInput] = useState('');
   
+  // Voice Chat States
+  const [isMicOn, setIsMicOn] = useState(false);
+  const [isOpponentSpeaking, setIsOpponentSpeaking] = useState(false);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const calculatePoints = (time: number) => {
@@ -64,6 +68,12 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         setChatMessages(Object.values(data.chat));
       }
 
+      // Voice activity sync
+      if (data.voiceActivity) {
+        const oppId = playerRole === 1 ? 'p2' : 'p1';
+        setIsOpponentSpeaking(!!data.voiceActivity[oppId]);
+      }
+
       if (data.status === 'closed') {
         resetState();
       }
@@ -72,13 +82,38 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     return () => unsubscribe();
   }, [activeRoom, playerRole, gameStarted, currentUser]);
 
+  const toggleMic = async () => {
+    if (!isMicOn) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStreamRef.current = stream;
+        setIsMicOn(true);
+        if (activeRoom) {
+          const roleKey = playerRole === 1 ? 'p1' : 'p2';
+          update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: true });
+        }
+      } catch (err) {
+        alert("فشل الوصول للمايكروفون");
+      }
+    } else {
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      setIsMicOn(false);
+      if (activeRoom) {
+        const roleKey = playerRole === 1 ? 'p1' : 'p2';
+        update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: false });
+      }
+    }
+  };
+
   const resetState = () => {
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
     setActiveRoom(null);
     setGameStarted(false);
     setOpponent(null);
     setBoard([]);
     setPlayerRole(null);
     setChatMessages([]);
+    setIsMicOn(false);
   };
 
   const handleLeaveRoom = async () => {
@@ -299,13 +334,17 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   return (
     <div className="flex h-full bg-slate-950 overflow-hidden relative">
       <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 gap-6 md:gap-8">
-        <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 md:p-5 rounded-3xl border border-white/5 shadow-2xl">
+        {/* Opponent Profile */}
+        <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 md:p-5 rounded-3xl border border-white/5 shadow-2xl relative">
            <div className="flex items-center gap-4 md:gap-5">
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/10 bg-slate-800 shadow-xl">
+              <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl overflow-hidden border-2 bg-slate-800 shadow-xl transition-all ${isOpponentSpeaking ? 'border-emerald-500 scale-105 shadow-emerald-500/20' : 'border-white/10'}`}>
                 <img src={opponent?.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h4 className="font-black text-slate-400 text-base md:text-lg">{opponent?.username || "في انتظار الخصم..."}</h4>
+                <h4 className="font-black text-slate-400 text-base md:text-lg flex items-center gap-2">
+                  {opponent?.username || "في انتظار الخصم..."}
+                  {isOpponentSpeaking && <span className="flex gap-0.5"><span className="w-1 h-3 bg-emerald-500 animate-bounce"></span><span className="w-1 h-5 bg-emerald-500 animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-3 bg-emerald-500 animate-bounce [animation-delay:-0.4s]"></span></span>}
+                </h4>
                 <div className={`text-xl md:text-2xl font-mono font-black ${turn === (playerRole === 1 ? 2 : 1) ? 'text-amber-500 animate-pulse' : 'text-slate-700'}`}>
                   {formatTime(playerRole === 1 ? p2Time : p1Time)}
                 </div>
@@ -316,6 +355,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
            </button>
         </div>
 
+        {/* Game Board */}
         <div className="relative aspect-square w-full max-w-[540px] bg-[#2a1d15] p-2 md:p-4 rounded-[1.5rem] md:rounded-[2.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.9)] border-[8px] md:border-[16px] border-[#3d2b1f] overflow-hidden">
           <div className="grid grid-cols-8 grid-rows-8 w-full h-full shadow-2xl">
             {board.map((row, r) => row.map((piece, c) => {
@@ -337,9 +377,10 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           </div>
         </div>
 
+        {/* Local Profile */}
         <div className="w-full max-w-[620px] flex items-center justify-between glass p-4 md:p-5 rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
            <div className="flex items-center gap-4 md:gap-5">
-              <div className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 md:border-4 border-indigo-500 bg-slate-800 shadow-2xl">
+              <div className={`w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 md:border-4 bg-slate-800 shadow-2xl transition-all ${isMicOn ? 'border-emerald-500 shadow-emerald-500/20' : 'border-indigo-500'}`}>
                 <img src={currentUser.avatar || ''} className="w-full h-full object-cover" />
               </div>
               <div>
@@ -349,22 +390,35 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
                 </div>
               </div>
            </div>
-           <div className="flex flex-col items-end">
-              <span className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest font-black">جائزة الفوز</span>
-              <span className="text-2xl md:text-3xl font-black text-emerald-400">+{calculatePoints(activeRoom.timeLimit)}</span>
+           <div className="flex items-center gap-4">
+              <button 
+                onClick={toggleMic}
+                className={`p-4 rounded-2xl transition-all border ${isMicOn ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/40' : 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700'}`}
+              >
+                {isMicOn ? (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" /></svg>
+                )}
+              </button>
+              <div className="flex flex-col items-end">
+                <span className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest font-black">جائزة الفوز</span>
+                <span className="text-2xl md:text-3xl font-black text-emerald-400">+{calculatePoints(activeRoom.timeLimit)}</span>
+              </div>
            </div>
         </div>
       </div>
 
+      {/* Text Chat Sidebar */}
       <div className="w-80 border-l border-white/5 glass flex flex-col hidden lg:flex">
          <div className="p-6 border-b border-white/5 bg-white/5">
             <h3 className="font-black flex items-center gap-3 text-lg uppercase tracking-tighter text-white">دردشة الغرفة</h3>
          </div>
-         <div className="flex-1 p-6 overflow-y-auto space-y-4">
+         <div className="flex-1 p-6 overflow-y-auto space-y-4 custom-scrollbar">
             {chatMessages.map((msg, i) => (
                <div key={i} className={`flex flex-col ${msg.sender === currentUser.username ? 'items-end' : 'items-start'}`}>
                   <span className="text-[10px] text-slate-500 mb-1 font-black uppercase tracking-widest">{msg.sender}</span>
-                  <div className={`px-4 py-2 rounded-2xl text-sm max-w-[90%] ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-100 border border-white/5'}`}>
+                  <div className={`px-4 py-2 rounded-2xl text-sm max-w-[90%] shadow-lg ${msg.sender === currentUser.username ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-100 border border-white/5'}`}>
                      {msg.text}
                   </div>
                </div>
