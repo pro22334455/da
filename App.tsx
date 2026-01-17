@@ -7,6 +7,22 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
+    // طلب إذن الميكروفون فور تشغيل التطبيق
+    const requestInitialPermissions = async () => {
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // إيقاف المسارات فوراً بعد الحصول على الإذن لمنع استهلاك البطارية أو ظهور علامة التسجيل مبكراً
+          stream.getTracks().forEach(track => track.stop());
+          console.log("Microphone permission granted early.");
+        }
+      } catch (err) {
+        console.warn("User denied microphone permission at startup or device has no mic.");
+      }
+    };
+
+    requestInitialPermissions();
+
     const saved = sessionStorage.getItem('ibra_dama_current_user');
     if (saved) {
       setCurrentUser(JSON.parse(saved));
