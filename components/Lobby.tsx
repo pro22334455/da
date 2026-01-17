@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Room } from '../types';
-import { db, ref, onValue, set, push, remove } from '../firebaseService';
+import { User, Room } from './types';
+import { db, ref, onValue, set, push, remove } from './firebaseService';
 
 interface LobbyProps {
   currentUser: User;
