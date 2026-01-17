@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ViewType, User } from './types';
-import Sidebar from './Sidebar';
-import ChatView from './components/ChatView';
-import ImageGenView from './components/ImageGenView';
-import VoiceView from './components/VoiceView';
+import { User } from './types';
 import DamaView from './components/DamaView';
 import Auth from './components/Auth';
 
 const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<ViewType>(ViewType.CHAT);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -38,26 +33,18 @@ const App: React.FC = () => {
     }
   };
 
-  const renderView = () => {
-    if (activeView === ViewType.DAMA) {
-      if (!currentUser) return <Auth onLogin={handleLogin} />;
-      return <DamaView currentUser={currentUser} onUpdatePoints={handleUpdatePoints} />;
-    }
-
-    switch (activeView) {
-      case ViewType.CHAT: return <ChatView />;
-      case ViewType.IMAGE: return <ImageGenView />;
-      case ViewType.VOICE: return <VoiceView />;
-      default: return <ChatView />;
-    }
-  };
+  if (!currentUser) {
+    return (
+      <div className="h-screen w-full bg-[#020617] flex items-center justify-center font-inter" dir="rtl">
+        <Auth onLogin={handleLogin} />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-950 text-slate-100 font-inter">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
-      <main className="flex-1 relative overflow-hidden flex flex-col">
-        {renderView()}
-      </main>
+    <div className="h-screen w-full overflow-hidden bg-[#020617] text-slate-100 font-inter select-none" dir="rtl">
+      {/* واجهة اللعبة الأساسية مباشرة بدون شريط جانبي */}
+      <DamaView currentUser={currentUser} onUpdatePoints={handleUpdatePoints} />
     </div>
   );
 };
