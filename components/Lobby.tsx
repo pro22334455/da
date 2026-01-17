@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Room } from '../types';
 import { db, ref, onValue, set, push, remove } from '../firebaseService';
@@ -56,7 +55,6 @@ const Lobby: React.FC<LobbyProps> = ({ currentUser, onJoinRoom, rooms, onRoomsUp
   const handleCreateRoom = async (time: number) => {
     const roomsRef = ref(db, 'rooms');
     const newRoomRef = push(roomsRef);
-    // Fixed: Added 'as const' to status to satisfy Room interface status: 'waiting' | 'playing'
     const roomData = {
       creator: currentUser,
       timeLimit: time,
@@ -75,7 +73,6 @@ const Lobby: React.FC<LobbyProps> = ({ currentUser, onJoinRoom, rooms, onRoomsUp
        return;
     }
     
-    // Update room status in Firebase to lock it
     await set(ref(db, `rooms/${room.id}/status`), 'playing');
     await set(ref(db, `rooms/${room.id}/opponent`), currentUser);
     onJoinRoom(room);
@@ -86,7 +83,7 @@ const Lobby: React.FC<LobbyProps> = ({ currentUser, onJoinRoom, rooms, onRoomsUp
       {/* User Status Bar */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12 bg-white/5 p-6 rounded-[2.5rem] border border-white/10 shadow-2xl relative">
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest shadow-lg">
-          Global Player Profile
+          Ibra Dama Player Profile
         </div>
         
         <div className="flex items-center gap-5">
@@ -197,7 +194,7 @@ const Lobby: React.FC<LobbyProps> = ({ currentUser, onJoinRoom, rooms, onRoomsUp
                  </svg>
                </div>
                <div>
-                  <h3 className="text-4xl font-black text-white tracking-tight">أساطير Lumina</h3>
+                  <h3 className="text-4xl font-black text-white tracking-tight">أساطير Ibra Dama</h3>
                   <p className="text-slate-500 text-sm font-bold uppercase tracking-[0.2em] mt-1">Global Top {allPlayers.length}</p>
                </div>
             </div>
