@@ -37,10 +37,24 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // تمرير تلقائي لأسفل المحادثة
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  const initBoard = () => {
+    const newBoard: DamaBoard = Array(8).fill(null).map(() => Array(8).fill(null));
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 8; c++) {
+        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 1, king: false };
+      }
+    }
+    for (let r = 5; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 2, king: false };
+      }
+    }
+    return newBoard;
+  };
 
   useEffect(() => {
     if (!activeRoom) return;
@@ -49,18 +63,22 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       const data = snapshot.val();
       if (!data) return;
       
-      if (data.status === 'playing' && data.opponent && !gameStarted) {
-        setOpponent(data.opponent.id === currentUser.id ? data.creator : data.opponent);
-        setGameStarted(true);
-        if (playerRole === 1 && !data.board) {
-          const initialBoard = initBoard();
-          update(gameRef, { 
-            board: initialBoard, 
-            turn: 1, 
-            p1Time: activeRoom.timeLimit * 60, 
-            p2Time: activeRoom.timeLimit * 60,
-            status: 'playing' 
-          });
+      // مزامنة بداية اللعبة والقطع
+      if (data.status === 'playing' && data.opponent) {
+        if (!gameStarted) {
+          setOpponent(data.opponent.id === currentUser.id ? data.creator : data.opponent);
+          setGameStarted(true);
+          
+          // فقط المنشئ (Role 1) يقوم بتوليد اللوحة لأول مرة
+          if (playerRole === 1 && !data.board) {
+            const initialBoard = initBoard();
+            update(gameRef, { 
+              board: initialBoard, 
+              turn: 1, 
+              p1Time: activeRoom.timeLimit * 60, 
+              p2Time: activeRoom.timeLimit * 60
+            });
+          }
         }
       }
       
@@ -92,7 +110,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: true });
         }
       } catch (err) { 
-        alert("يرجى تفعيل إذن المايكروفون من إعدادات المتصفح للاستمتاع بالدردشة الصوتية"); 
+        alert("يرجى تفعيل إذن المايكروفون"); 
       }
     } else {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -136,21 +154,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     }, 1000);
     return () => clearInterval(interval);
   }, [gameStarted, turn, p1Time, p2Time, activeRoom]);
-
-  const initBoard = () => {
-    const newBoard: DamaBoard = Array(8).fill(null).map(() => Array(8).fill(null));
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 8; c++) {
-        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 1, king: false };
-      }
-    }
-    for (let r = 5; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 2, king: false };
-      }
-    }
-    return newBoard;
-  };
 
   const handleJoinOrCreate = (room: Room) => {
     setActiveRoom(room);
@@ -270,7 +273,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   if (!activeRoom) return <Lobby currentUser={currentUser} onJoinRoom={handleJoinOrCreate} rooms={allRooms} onRoomsUpdate={setAllRooms} />;
 
   return (
-    <div className="flex flex-col lg:flex-row h-full bg-[#020617] relative overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-full bg-[#020617] relative overflow-hidden" dir="rtl">
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4 md:gap-6 overflow-y-auto custom-scrollbar">
         
         {/* Top bar */}
@@ -279,10 +282,9 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
              <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 border border-white/5 transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
              </button>
-             {/* زر المحادثة للموبايل */}
              <button onClick={() => setShowChatMobile(!showChatMobile)} className="lg:hidden p-3 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/10 transition-colors relative">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                {chatMessages.length > 0 && !showChatMobile && <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>}
+                {chatMessages.length > 0 && !showChatMobile && <span className="absolute top-2 left-2 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>}
              </button>
            </div>
            
@@ -359,7 +361,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         </div>
       </div>
 
-      {/* Chat Panel - Responsive */}
+      {/* Chat Panel - Fixed Message Direction */}
       <div className={`fixed inset-0 lg:static lg:inset-auto lg:flex flex-col w-full lg:w-80 border-r border-white/5 glass transition-transform duration-300 z-50 ${showChatMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
          <div className="p-6 border-b border-white/5 flex items-center justify-between bg-slate-900/50">
            <h3 className="font-black text-white text-xs uppercase tracking-widest flex items-center gap-2">
@@ -372,11 +374,12 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
          </div>
          <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar bg-slate-950/20">
             {chatMessages.map((msg, i) => {
+              // تعديل منطق تحديد المرسل والمحاذاة
               const isMe = msg.sender === currentUser.username;
               return (
-                <div key={i} className={`flex flex-col ${isMe ? 'items-start' : 'items-end'}`}>
-                   <span className="text-[10px] text-slate-500 mb-1 px-2 font-bold">{msg.sender}</span>
-                   <div className={`px-4 py-2.5 rounded-2xl text-[13px] max-w-[85%] shadow-md break-words ${isMe ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tl-none'}`}>
+                <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                   <span className="text-[10px] text-slate-500 mb-1 px-2 font-bold">{isMe ? 'أنت' : msg.sender}</span>
+                   <div className={`px-4 py-2.5 rounded-2xl text-[13px] max-w-[85%] shadow-md break-words ${isMe ? 'bg-indigo-600 text-white rounded-tl-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tr-none'}`}>
                      {msg.text}
                    </div>
                 </div>
