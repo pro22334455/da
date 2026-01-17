@@ -63,13 +63,13 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       const data = snapshot.val();
       if (!data) return;
       
-      // مزامنة بداية اللعبة والقطع
+      // مزامنة حالة المباراة واللوحة
       if (data.status === 'playing' && data.opponent) {
         if (!gameStarted) {
           setOpponent(data.opponent.id === currentUser.id ? data.creator : data.opponent);
           setGameStarted(true);
           
-          // فقط المنشئ (Role 1) يقوم بتوليد اللوحة لأول مرة
+          // المنشئ يقوم برفع اللوحة إذا لم تكن موجودة
           if (playerRole === 1 && !data.board) {
             const initialBoard = initBoard();
             update(gameRef, { 
@@ -86,14 +86,17 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       if (data.turn) setTurn(data.turn);
       if (data.p1Time !== undefined) setP1Time(data.p1Time);
       if (data.p2Time !== undefined) setP2Time(data.p2Time);
+      
       if (data.chat) {
         const msgs = Object.values(data.chat) as any[];
         setChatMessages(msgs.sort((a,b) => a.time - b.time));
       }
+      
       if (data.voiceActivity) {
         const oppId = playerRole === 1 ? 'p2' : 'p1';
         setIsOpponentSpeaking(!!data.voiceActivity[oppId]);
       }
+      
       if (data.status === 'closed') resetState();
     });
     return () => unsubscribe();
@@ -109,9 +112,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           const roleKey = playerRole === 1 ? 'p1' : 'p2';
           update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: true });
         }
-      } catch (err) { 
-        alert("يرجى تفعيل إذن المايكروفون"); 
-      }
+      } catch (err) { alert("يرجى تفعيل الميكروفون"); }
     } else {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       setIsMicOn(false);
@@ -131,7 +132,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     setPlayerRole(null);
     setChatMessages([]);
     setIsMicOn(false);
-    setShowChatMobile(false);
   };
 
   const handleLeaveRoom = async () => {
@@ -159,22 +159,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     setActiveRoom(room);
     setPlayerRole(room.creator.id === currentUser.id ? 1 : 2);
   };
-
-  const playMoveSound = useCallback(() => {
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(150, ctx.currentTime);
-      gain.gain.setValueAtTime(0.05, ctx.currentTime);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
-    } catch (e) {}
-  }, []);
 
   const inBounds = (r: number, c: number) => r >= 0 && r < 8 && c >= 0 && c < 8;
 
@@ -245,7 +229,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     } else {
       const [sr, sc] = selected;
       if (highlights.some(h => h[0] === r && h[1] === c)) {
-        playMoveSound(); const newB = board.map(row => [...row]); const p = { ...newB[sr][sc]! };
+        const newB = board.map(row => [...row]); const p = { ...newB[sr][sc]! };
         if (pendingSequences) {
            const seq = pendingSequences.find(s => s[0].to[0] === r && s[0].to[1] === c);
            newB[seq[0].cap[0]][seq[0].cap[1]] = null; newB[sr][sc] = null; newB[r][c] = p;
@@ -274,54 +258,45 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
 
   return (
     <div className="flex flex-col lg:flex-row h-full bg-[#020617] relative overflow-hidden" dir="rtl">
-      <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4 md:gap-6 overflow-y-auto custom-scrollbar">
-        
+      <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4 overflow-y-auto custom-scrollbar">
         {/* Top bar */}
         <div className="w-full max-w-[620px] flex items-center justify-between">
-           <div className="flex gap-2">
-             <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 border border-white/5 transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-             </button>
-             <button onClick={() => setShowChatMobile(!showChatMobile)} className="lg:hidden p-3 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/10 transition-colors relative">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                {chatMessages.length > 0 && !showChatMobile && <span className="absolute top-2 left-2 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>}
-             </button>
-           </div>
-           
-           <div className="flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">خادم حي</span>
-           </div>
-           
-           <button onClick={handleLeaveRoom} className="p-3 bg-rose-500/10 hover:bg-rose-500/20 rounded-2xl text-rose-500 border border-rose-500/20 transition-colors">
+           <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 rounded-2xl text-slate-400">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+           </button>
+           <button onClick={() => setShowChatMobile(!showChatMobile)} className="lg:hidden p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 relative">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+           </button>
+           <button onClick={handleLeaveRoom} className="p-3 bg-rose-500/10 rounded-2xl text-rose-500">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
            </button>
         </div>
 
-        {/* Opponent Card */}
-        <div className="w-full max-w-[620px] flex items-center justify-between glass p-3 md:p-4 rounded-3xl border border-white/5">
-           <div className="flex items-center gap-3 md:gap-4">
-              <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all duration-300 ${isOpponentSpeaking ? 'border-emerald-500 scale-105 shadow-lg shadow-emerald-500/20' : 'border-white/10'}`}>
-                <img src={opponent?.avatar || ''} className="w-full h-full object-cover" />
-              </div>
+        {/* Players & Board UI ... (نفس الكود السابق مع تعديل اتجاه المحادثة بالأسفل) */}
+        <div className="w-full max-w-[620px] glass p-4 rounded-3xl border border-white/5 flex justify-between items-center">
+           <div className="flex items-center gap-3">
+              <img src={opponent?.avatar || ''} className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10" />
               <div>
-                <h4 className="font-black text-slate-400 text-xs md:text-sm truncate max-w-[100px] md:max-w-[120px]">{opponent?.username || "انتظار الخصم..."}</h4>
-                <div className={`text-lg md:text-xl font-mono font-black ${turn === (playerRole === 1 ? 2 : 1) ? 'text-amber-500 animate-pulse' : 'text-slate-700'}`}>
-                  {formatTime(playerRole === 1 ? p2Time : p1Time)}
-                </div>
+                <p className="text-xs text-slate-400">{opponent?.username || "انتظار..."}</p>
+                <p className="text-lg font-mono font-black text-amber-500">{formatTime(playerRole === 1 ? p2Time : p1Time)}</p>
               </div>
            </div>
-           {isOpponentSpeaking && (
-              <div className="flex gap-0.5 md:gap-1 items-center px-2 py-1 md:px-3 md:py-2 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                <span className="w-0.5 md:w-1 h-2 md:h-3 bg-emerald-500 animate-bounce"></span>
-                <span className="w-0.5 md:w-1 h-4 md:h-5 bg-emerald-500 animate-bounce [animation-delay:-0.2s]"></span>
-                <span className="w-0.5 md:w-1 h-2 md:h-3 bg-emerald-500 animate-bounce [animation-delay:-0.4s]"></span>
+           <div className="text-center">
+              <span className="text-[10px] text-slate-600 font-black uppercase tracking-widest block">الدور الآن</span>
+              <span className={`text-xs font-bold ${turn === playerRole ? 'text-emerald-500' : 'text-slate-400'}`}>
+                {turn === playerRole ? 'دورك' : 'دور الخصم'}
+              </span>
+           </div>
+           <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-xs text-slate-100">{currentUser.username}</p>
+                <p className="text-lg font-mono font-black text-indigo-400">{formatTime(playerRole === 1 ? p1Time : p2Time)}</p>
               </div>
-           )}
+              <img src={currentUser.avatar || ''} className="w-12 h-12 rounded-xl bg-slate-800 border border-indigo-500/50" />
+           </div>
         </div>
 
-        {/* The Board */}
-        <div className="relative aspect-square w-full max-w-[500px] bg-[#1a120b] p-1 md:p-4 rounded-[1.5rem] md:rounded-[2rem] shadow-2xl border-[6px] md:border-[10px] border-[#2c1e14]">
+        <div className="relative aspect-square w-full max-w-[500px] bg-[#1a120b] p-2 rounded-[2rem] shadow-2xl border-[10px] border-[#2c1e14]">
           <div className="grid grid-cols-8 grid-rows-8 w-full h-full rounded-lg overflow-hidden border border-black/40">
             {board.map((row, r) => row.map((piece, c) => {
               const isDark = (r + c) % 2 === 0;
@@ -329,11 +304,11 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
               const isHighlight = highlights.some(h => h[0] === r && h[1] === c);
               return (
                 <div key={`${r}-${c}`} onClick={() => handleCellClick(r, c)} className={`relative flex items-center justify-center cursor-pointer ${isDark ? 'bg-[#3e2723]' : 'bg-[#d7ccc8]'}`}>
-                  {isHighlight && <div className="absolute w-2 h-2 md:w-4 md:h-4 rounded-full bg-emerald-400 z-10 animate-pulse"></div>}
+                  {isHighlight && <div className="absolute w-3 h-3 rounded-full bg-emerald-400 z-10 animate-pulse"></div>}
                   {isSelected && <div className="absolute inset-0 bg-amber-400/20 border border-amber-400 z-20"></div>}
                   {piece && (
-                    <div className={`w-[85%] h-[85%] rounded-full piece-shadow flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110 -translate-y-1' : 'scale-100'} border border-black/20`}>
-                      {piece.king && <svg viewBox="0 0 24 24" className="w-5 h-5 md:w-8 md:h-8 text-amber-300 drop-shadow-lg" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
+                    <div className={`w-[80%] h-[80%] rounded-full piece-shadow flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110' : 'scale-100'}`}>
+                      {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-300" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
                     </div>
                   )}
                 </div>
@@ -341,45 +316,26 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
             }))}
           </div>
         </div>
-
-        {/* My Card */}
-        <div className="w-full max-w-[620px] flex items-center justify-between glass p-3 md:p-4 rounded-3xl border border-indigo-500/20">
-           <div className="flex items-center gap-3 md:gap-4">
-              <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl overflow-hidden border-2 bg-slate-800 transition-all ${isMicOn ? 'border-emerald-500 shadow-emerald-500/20 shadow-lg' : 'border-indigo-500'}`}>
-                <img src={currentUser.avatar || ''} className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <h4 className="font-black text-white text-xs md:text-sm">{currentUser.username}</h4>
-                <div className={`text-lg md:text-xl font-mono font-black ${turn === playerRole ? 'text-indigo-400 animate-pulse' : 'text-slate-700'}`}>
-                  {formatTime(playerRole === 1 ? p1Time : p2Time)}
-                </div>
-              </div>
-           </div>
-           <button onClick={toggleMic} className={`p-3 md:p-4 rounded-2xl transition-all border ${isMicOn ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 border-white/5 hover:border-white/20'}`}>
-             {isMicOn ? <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg> : <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" /></svg>}
-           </button>
-        </div>
+        
+        <button onClick={toggleMic} className={`mt-4 px-8 py-4 rounded-2xl font-black flex items-center gap-3 transition-all ${isMicOn ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+           {isMicOn ? 'الميكروفون يعمل' : 'تشغيل الميكروفون'}
+           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+        </button>
       </div>
 
-      {/* Chat Panel - Fixed Message Direction */}
+      {/* Chat Panel - تم تعديل اتجاه الفقاعات هنا */}
       <div className={`fixed inset-0 lg:static lg:inset-auto lg:flex flex-col w-full lg:w-80 border-r border-white/5 glass transition-transform duration-300 z-50 ${showChatMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
          <div className="p-6 border-b border-white/5 flex items-center justify-between bg-slate-900/50">
-           <h3 className="font-black text-white text-xs uppercase tracking-widest flex items-center gap-2">
-             المحادثة المباشرة
-             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-           </h3>
-           <button onClick={() => setShowChatMobile(false)} className="lg:hidden p-2 text-slate-500 hover:text-white">
-             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-           </button>
+           <h3 className="font-black text-white text-xs uppercase tracking-widest">المحادثة</h3>
+           <button onClick={() => setShowChatMobile(false)} className="lg:hidden p-2 text-slate-500"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
          </div>
          <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar bg-slate-950/20">
             {chatMessages.map((msg, i) => {
-              // تعديل منطق تحديد المرسل والمحاذاة
               const isMe = msg.sender === currentUser.username;
               return (
-                <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                <div key={i} className={`flex flex-col ${isMe ? 'items-start' : 'items-end'}`}>
                    <span className="text-[10px] text-slate-500 mb-1 px-2 font-bold">{isMe ? 'أنت' : msg.sender}</span>
-                   <div className={`px-4 py-2.5 rounded-2xl text-[13px] max-w-[85%] shadow-md break-words ${isMe ? 'bg-indigo-600 text-white rounded-tl-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tr-none'}`}>
+                   <div className={`px-4 py-2.5 rounded-2xl text-[13px] max-w-[85%] shadow-md ${isMe ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tl-none'}`}>
                      {msg.text}
                    </div>
                 </div>
@@ -387,34 +343,24 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
             })}
             <div ref={chatEndRef} />
          </div>
-         <form onSubmit={sendChat} className="p-4 border-t border-white/5 bg-slate-900/80 backdrop-blur-md">
+         <form onSubmit={sendChat} className="p-4 border-t border-white/5 bg-slate-900/80">
             <div className="flex gap-2">
-              <input 
-                type="text" 
-                value={chatInput} 
-                onChange={(e) => setChatInput(e.target.value)} 
-                placeholder="اكتب رسالتك..." 
-                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-indigo-500/50 text-white font-bold" 
-              />
-              <button type="submit" className="p-3 bg-indigo-600 rounded-xl text-white active:scale-90 transition-transform">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-              </button>
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="اكتب رسالتك..." className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-indigo-500 text-white" />
+              <button type="submit" className="p-3 bg-indigo-600 rounded-xl text-white"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button>
             </div>
          </form>
       </div>
 
-      {/* Rules Modal */}
       {showRules && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="glass w-full max-w-lg p-8 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-white/10 shadow-2xl">
-              <h2 className="text-2xl md:text-3xl font-black mb-6 md:mb-8 text-white">قواعد اللعبة</h2>
-              <ul className="space-y-4 text-slate-300 font-medium text-sm md:text-base">
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black text-white">1</span> القفز إلزامي عند توفر فرصة لأكل حجر الخصم.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black text-white">2</span> الأكل المتعدد إلزامي؛ يجب إكمال سلسلة القفزات.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black text-white">3</span> يتحول الحجر إلى "ملك" عند وصوله للصف الأخير للخصم.</li>
-                 <li className="flex gap-4"><span className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 text-xs font-black text-white">4</span> الملك يتحرك في جميع الاتجاهات وبأي مسافة على نفس الوتر.</li>
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-6" onClick={() => setShowRules(false)}>
+           <div className="glass w-full max-w-lg p-10 rounded-[3rem] border border-white/10" onClick={e => e.stopPropagation()}>
+              <h2 className="text-2xl font-black mb-6">قواعد اللعبة</h2>
+              <ul className="space-y-4 text-slate-300 font-medium text-sm">
+                 <li>• القفز إلزامي عند توفر فرصة لأكل حجر الخصم.</li>
+                 <li>• يجب إكمال سلسلة القفزات المتعددة.</li>
+                 <li>• يتحول الحجر لملك عند الوصول للصف الأخير.</li>
               </ul>
-              <button onClick={() => setShowRules(false)} className="w-full mt-10 py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">فهمت ذلك</button>
+              <button onClick={() => setShowRules(false)} className="w-full mt-10 py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-sm">فهمت ذلك</button>
            </div>
         </div>
       )}
