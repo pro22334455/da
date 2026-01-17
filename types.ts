@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   username: string;
@@ -6,14 +7,11 @@ export interface User {
 }
 
 export interface ChatMessage {
-  sender: string;
+  id: string;
+  senderId: string;
+  senderName: string;
   text: string;
-  time: number;
-}
-
-export interface VoiceActivity {
-  p1?: boolean;
-  p2?: boolean;
+  timestamp: number;
 }
 
 export interface Room {
@@ -27,8 +25,8 @@ export interface Room {
   turn?: 1 | 2;
   p1Time?: number;
   p2Time?: number;
-  chat?: Record<string, ChatMessage>;
-  voiceActivity?: VoiceActivity;
+  messages?: Record<string, ChatMessage>;
+  voiceStatus?: Record<string, boolean>; // id -> isMuted
 }
 
 export interface DamaPiece {
@@ -37,13 +35,3 @@ export interface DamaPiece {
 }
 
 export type DamaBoard = (DamaPiece | null)[][];
-
-export interface GameState {
-  board: DamaBoard;
-  turn: 1 | 2;
-  player1: User;
-  player2?: User;
-  timeLimit: number;
-  p1Time: number;
-  p2Time: number;
-}
