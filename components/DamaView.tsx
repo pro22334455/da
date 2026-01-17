@@ -10,7 +10,7 @@ interface DamaViewProps {
 }
 
 const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
-  const [board, setBoard] = useState<DamaBoard>(Array(8).fill(null).map(() => Array(8).fill(null)));
+  const [board, setBoard] = useState<DamaBoard | null>(null);
   const [turn, setTurn] = useState<1 | 2>(1);
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [highlights, setHighlights] = useState<[number, number][]>([]);
@@ -34,7 +34,6 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   const [isOpponentSpeaking, setIsOpponentSpeaking] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,27 +58,31 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   useEffect(() => {
     if (!activeRoom) return;
     const gameRef = ref(db, `rooms/${activeRoom.id}`);
+    
     const unsubscribe = onValue(gameRef, (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
       
-      // مزامنة حالة المباراة واللوحة
+      // 1. تهيئة اللوحة فوراً للمنشئ إذا لم تكن موجودة
+      if (playerRole === 1 && !data.board) {
+        const initialBoard = initBoard();
+        update(gameRef, { 
+          board: initialBoard, 
+          turn: 1, 
+          p1Time: activeRoom.timeLimit * 60, 
+          p2Time: activeRoom.timeLimit * 60 
+        });
+      }
+
+      // 2. تفعيل حالة اللعب فقط عند وجود خصم وحالة playing
       if (data.status === 'playing' && data.opponent) {
         if (!gameStarted) {
           setOpponent(data.opponent.id === currentUser.id ? data.creator : data.opponent);
           setGameStarted(true);
-          
-          // المنشئ يقوم برفع اللوحة إذا لم تكن موجودة
-          if (playerRole === 1 && !data.board) {
-            const initialBoard = initBoard();
-            update(gameRef, { 
-              board: initialBoard, 
-              turn: 1, 
-              p1Time: activeRoom.timeLimit * 60, 
-              p2Time: activeRoom.timeLimit * 60
-            });
-          }
         }
+      } else {
+        setGameStarted(false);
+        setOpponent(data.opponent || null);
       }
       
       if (data.board) setBoard(data.board);
@@ -128,7 +131,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     setActiveRoom(null);
     setGameStarted(false);
     setOpponent(null);
-    setBoard(Array(8).fill(null).map(() => Array(8).fill(null)));
+    setBoard(null);
     setPlayerRole(null);
     setChatMessages([]);
     setIsMicOn(false);
@@ -136,13 +139,17 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
 
   const handleLeaveRoom = async () => {
     if (activeRoom) {
-      await update(ref(db, `rooms/${activeRoom.id}`), { status: 'closed' });
-      if (playerRole === 1 && !gameStarted) await remove(ref(db, `rooms/${activeRoom.id}`));
+      if (playerRole === 1 && !gameStarted) {
+         await remove(ref(db, `rooms/${activeRoom.id}`));
+      } else {
+         await update(ref(db, `rooms/${activeRoom.id}`), { status: 'closed' });
+      }
     }
     resetState();
   };
 
   useEffect(() => {
+    // الوقت يبدأ الاحتساب فقط إذا بدأت اللعبة (كلا اللاعبين موجودين)
     if (!gameStarted || !activeRoom) return;
     const interval = setInterval(() => {
       const gameRef = ref(db, `rooms/${activeRoom.id}`);
@@ -201,6 +208,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   }, [getJumps]);
 
   const computeHighlights = (r: number, c: number) => {
+    if (!board) return [];
     const hl: [number, number][] = []; const p = board[r][c]; if (!p) return hl;
     const { maxCount, allMoves } = getLongestJumps(turn, board);
     if (maxCount > 0) {
@@ -219,7 +227,13 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   };
 
   const handleCellClick = (r: number, c: number) => {
-    if (!gameStarted || turn !== playerRole || !activeRoom) return;
+    // منع الحركة إذا لم تبدأ اللعبة (بانتظار الخصم)
+    if (!gameStarted) {
+       console.log("بانتظار دخول الخصم لبدء اللعب...");
+       return;
+    }
+    if (turn !== playerRole || !activeRoom || !board) return;
+    
     if (selected === null) {
       if (board[r][c]?.player === turn) {
         setSelected([r, c]); setHighlights(computeHighlights(r, c));
@@ -272,49 +286,67 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
            </button>
         </div>
 
-        {/* Players & Board UI ... (نفس الكود السابق مع تعديل اتجاه المحادثة بالأسفل) */}
+        {/* Players Status UI */}
         <div className="w-full max-w-[620px] glass p-4 rounded-3xl border border-white/5 flex justify-between items-center">
            <div className="flex items-center gap-3">
               <img src={opponent?.avatar || ''} className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10" />
               <div>
                 <p className="text-xs text-slate-400">{opponent?.username || "انتظار..."}</p>
-                <p className="text-lg font-mono font-black text-amber-500">{formatTime(playerRole === 1 ? p2Time : p1Time)}</p>
+                <p className={`text-lg font-mono font-black ${gameStarted ? 'text-amber-500' : 'text-slate-600'}`}>{formatTime(playerRole === 1 ? p2Time : p1Time)}</p>
               </div>
            </div>
            <div className="text-center">
-              <span className="text-[10px] text-slate-600 font-black uppercase tracking-widest block">الدور الآن</span>
-              <span className={`text-xs font-bold ${turn === playerRole ? 'text-emerald-500' : 'text-slate-400'}`}>
-                {turn === playerRole ? 'دورك' : 'دور الخصم'}
+              <span className="text-[10px] text-slate-600 font-black uppercase tracking-widest block">الحالة</span>
+              <span className={`text-xs font-bold ${!gameStarted ? 'text-rose-500 animate-pulse' : (turn === playerRole ? 'text-emerald-500' : 'text-slate-400')}`}>
+                {!gameStarted ? 'بانتظار الخصم' : (turn === playerRole ? 'دورك الآن' : 'دور الخصم')}
               </span>
            </div>
            <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-xs text-slate-100">{currentUser.username}</p>
-                <p className="text-lg font-mono font-black text-indigo-400">{formatTime(playerRole === 1 ? p1Time : p2Time)}</p>
+                <p className={`text-lg font-mono font-black ${gameStarted ? 'text-indigo-400' : 'text-slate-600'}`}>{formatTime(playerRole === 1 ? p1Time : p2Time)}</p>
               </div>
               <img src={currentUser.avatar || ''} className="w-12 h-12 rounded-xl bg-slate-800 border border-indigo-500/50" />
            </div>
         </div>
 
+        {/* The Board Display Area */}
         <div className="relative aspect-square w-full max-w-[500px] bg-[#1a120b] p-2 rounded-[2rem] shadow-2xl border-[10px] border-[#2c1e14]">
-          <div className="grid grid-cols-8 grid-rows-8 w-full h-full rounded-lg overflow-hidden border border-black/40">
-            {board.map((row, r) => row.map((piece, c) => {
-              const isDark = (r + c) % 2 === 0;
-              const isSelected = selected?.[0] === r && selected?.[1] === c;
-              const isHighlight = highlights.some(h => h[0] === r && h[1] === c);
-              return (
-                <div key={`${r}-${c}`} onClick={() => handleCellClick(r, c)} className={`relative flex items-center justify-center cursor-pointer ${isDark ? 'bg-[#3e2723]' : 'bg-[#d7ccc8]'}`}>
-                  {isHighlight && <div className="absolute w-3 h-3 rounded-full bg-emerald-400 z-10 animate-pulse"></div>}
-                  {isSelected && <div className="absolute inset-0 bg-amber-400/20 border border-amber-400 z-20"></div>}
-                  {piece && (
-                    <div className={`w-[80%] h-[80%] rounded-full piece-shadow flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110' : 'scale-100'}`}>
-                      {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-300" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
+          {board ? (
+            <div className="grid grid-cols-8 grid-rows-8 w-full h-full rounded-lg overflow-hidden border border-black/40">
+              {!gameStarted && (
+                 <div className="absolute inset-0 z-30 bg-black/20 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+                    <div className="bg-slate-900/90 px-6 py-3 rounded-2xl border border-white/10 shadow-2xl">
+                       <p className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                          <span className="w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>
+                          بانتظار المنافس
+                       </p>
                     </div>
-                  )}
-                </div>
-              );
-            }))}
-          </div>
+                 </div>
+              )}
+              {board.map((row, r) => row.map((piece, c) => {
+                const isDark = (r + c) % 2 === 0;
+                const isSelected = selected?.[0] === r && selected?.[1] === c;
+                const isHighlight = highlights.some(h => h[0] === r && h[1] === c);
+                return (
+                  <div key={`${r}-${c}`} onClick={() => handleCellClick(r, c)} className={`relative flex items-center justify-center cursor-pointer ${isDark ? 'bg-[#3e2723]' : 'bg-[#d7ccc8]'}`}>
+                    {isHighlight && <div className="absolute w-3 h-3 rounded-full bg-emerald-400 z-10 animate-pulse"></div>}
+                    {isSelected && <div className="absolute inset-0 bg-amber-400/20 border border-amber-400 z-20"></div>}
+                    {piece && (
+                      <div className={`w-[80%] h-[80%] rounded-full piece-shadow flex items-center justify-center transition-all ${piece.player === 1 ? 'bg-gradient-to-br from-rose-500 to-red-900' : 'bg-gradient-to-br from-cyan-400 to-indigo-900'} ${isSelected ? 'scale-110' : 'scale-100'} ${!gameStarted ? 'opacity-90 grayscale-[0.3]' : ''}`}>
+                        {piece.king && <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-300" fill="currentColor"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" /></svg>}
+                      </div>
+                    )}
+                  </div>
+                );
+              }))}
+            </div>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-indigo-400">
+               <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+               <p className="font-bold text-sm animate-pulse">جاري بناء الحلبة...</p>
+            </div>
+          )}
         </div>
         
         <button onClick={toggleMic} className={`mt-4 px-8 py-4 rounded-2xl font-black flex items-center gap-3 transition-all ${isMicOn ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
@@ -323,7 +355,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         </button>
       </div>
 
-      {/* Chat Panel - تم تعديل اتجاه الفقاعات هنا */}
+      {/* Chat Panel */}
       <div className={`fixed inset-0 lg:static lg:inset-auto lg:flex flex-col w-full lg:w-80 border-r border-white/5 glass transition-transform duration-300 z-50 ${showChatMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
          <div className="p-6 border-b border-white/5 flex items-center justify-between bg-slate-900/50">
            <h3 className="font-black text-white text-xs uppercase tracking-widest">المحادثة</h3>
