@@ -1,11 +1,3 @@
-
-export enum ViewType {
-  CHAT = 'CHAT',
-  IMAGE = 'IMAGE',
-  VOICE = 'VOICE',
-  DAMA = 'DAMA'
-}
-
 export interface User {
   id: string;
   username: string;
@@ -20,13 +12,6 @@ export interface Room {
   createdAt: number;
   status: 'waiting' | 'playing';
   opponent?: User;
-}
-
-export interface Message {
-  role: 'user' | 'model' | 'system';
-  content: string;
-  sender?: string;
-  timestamp: Date;
 }
 
 export interface DamaPiece {
@@ -44,18 +29,4 @@ export interface GameState {
   timeLimit: number;
   p1Time: number;
   p2Time: number;
-}
-
-// Added GeneratedImage interface to fix the import error in ImageGenView.tsx
-export interface GeneratedImage {
-  url: string;
-  prompt: string;
-  timestamp: Date;
-}
-
-// Added VoiceHistoryItem interface to fix the import error in VoiceView.tsx
-export interface VoiceHistoryItem {
-  text: string;
-  voiceName: string;
-  timestamp: Date;
 }
