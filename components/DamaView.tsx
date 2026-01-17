@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DamaBoard, DamaPiece, User, Room } from '../types';
 import Lobby from './Lobby';
-import { db, ref, onValue, set, update, remove, push } from '../firebaseService';
+import { db, ref, onValue, update, remove, push } from '../firebaseService';
 
 interface DamaViewProps {
   currentUser: User;
@@ -30,6 +31,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   
   const [isMicOn, setIsMicOn] = useState(false);
   const [isOpponentSpeaking, setIsOpponentSpeaking] = useState(false);
+
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -44,7 +46,13 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
         setGameStarted(true);
         if (playerRole === 1 && !data.board) {
           const initialBoard = initBoard();
-          update(gameRef, { board: initialBoard, turn: 1, p1Time: activeRoom.timeLimit * 60, p2Time: activeRoom.timeLimit * 60 });
+          update(gameRef, { 
+            board: initialBoard, 
+            turn: 1, 
+            p1Time: activeRoom.timeLimit * 60, 
+            p2Time: activeRoom.timeLimit * 60,
+            status: 'playing' 
+          });
         }
       }
       if (data.board) setBoard(data.board);
@@ -59,7 +67,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
       if (data.status === 'closed') resetState();
     });
     return () => unsubscribe();
-  }, [activeRoom, playerRole, gameStarted, currentUser]);
+  }, [activeRoom, playerRole, gameStarted, currentUser, turn]);
 
   const toggleMic = async () => {
     if (!isMicOn) {
@@ -71,7 +79,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
           const roleKey = playerRole === 1 ? 'p1' : 'p2';
           update(ref(db, `rooms/${activeRoom.id}/voiceActivity`), { [roleKey]: true });
         }
-      } catch (err) { alert("يرجى تفعيل إذن المايكروفون"); }
+      } catch (err) { alert("يرجى تفعيل إذن المايكروفون من إعدادات المتصفح"); }
     } else {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       setIsMicOn(false);
@@ -102,23 +110,28 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   };
 
   useEffect(() => {
-    if (!gameStarted || playerRole !== 1 || !activeRoom) return;
+    if (!gameStarted || !activeRoom) return;
     const interval = setInterval(() => {
       const gameRef = ref(db, `rooms/${activeRoom.id}`);
-      if (turn === 1) update(gameRef, { p1Time: Math.max(0, p1Time - 1) });
-      else update(gameRef, { p2Time: Math.max(0, p2Time - 1) });
+      if (turn === 1) {
+        if (p1Time > 0) update(gameRef, { p1Time: p1Time - 1 });
+      } else {
+        if (p2Time > 0) update(gameRef, { p2Time: p2Time - 1 });
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, [gameStarted, turn, p1Time, p2Time, playerRole, activeRoom]);
+  }, [gameStarted, turn, p1Time, p2Time, activeRoom]);
 
   const initBoard = () => {
     const newBoard: DamaBoard = Array(8).fill(null).map(() => Array(8).fill(null));
-    for (let r = 0; r < 8; r++) {
+    for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 8; c++) {
-        if ((r + c) % 2 === 0) {
-          if (r < 3) newBoard[r][c] = { player: 1, king: false };
-          else if (r > 4) newBoard[r][c] = { player: 2, king: false };
-        }
+        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 1, king: false };
+      }
+    }
+    for (let r = 5; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if ((r + c) % 2 === 0) newBoard[r][c] = { player: 2, king: false };
       }
     }
     return newBoard;
@@ -214,7 +227,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
     } else {
       const [sr, sc] = selected;
       if (highlights.some(h => h[0] === r && h[1] === c)) {
-        playMoveSound(); const newB = board.map(row => [...row]); const p = newB[sr][sc]!;
+        playMoveSound(); const newB = board.map(row => [...row]); const p = { ...newB[sr][sc]! };
         if (pendingSequences) {
            const seq = pendingSequences.find(s => s[0].to[0] === r && s[0].to[1] === c);
            newB[seq[0].cap[0]][seq[0].cap[1]] = null; newB[sr][sc] = null; newB[r][c] = p;
@@ -244,6 +257,7 @@ const DamaView: React.FC<DamaViewProps> = ({ currentUser, onUpdatePoints }) => {
   return (
     <div className="flex flex-col lg:flex-row h-full bg-[#020617] relative">
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-6 overflow-y-auto">
+        
         {/* Top bar */}
         <div className="w-full max-w-[620px] flex items-center justify-between">
            <button onClick={() => setShowRules(true)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 border border-white/5">
