@@ -7,29 +7,25 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // طلب إذن الميكروفون فور تشغيل التطبيق (قبل تسجيل الدخول)
-    const requestInitialPermissions = async () => {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // إيقاف المسار فوراً بعد التأكد من الحصول على الإذن
-          stream.getTracks().forEach(track => track.stop());
-          console.log("Microphone permission pre-granted.");
-        }
-      } catch (err) {
-        console.warn("Microphone permission not granted at startup:", err);
-      }
-    };
-
-    requestInitialPermissions();
-
     const saved = sessionStorage.getItem('ibra_dama_current_user');
     if (saved) {
       setCurrentUser(JSON.parse(saved));
     }
   }, []);
 
-  const handleLogin = (user: User) => {
+  const handleLogin = async (user: User) => {
+    // طلب الميكروفون هنا ضروري جداً لأنه استجابة لضغط زر (User Gesture)
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // نغلق المجرى فوراً، الإذن تم حفظه في المتصفح للجلسة الحالية
+        stream.getTracks().forEach(track => track.stop());
+        console.log("Mic Permission Secured");
+      }
+    } catch (err) {
+      console.warn("Mic permission denied or not available");
+    }
+
     setCurrentUser(user);
     sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(user));
   };
@@ -39,13 +35,6 @@ const App: React.FC = () => {
       const updated = { ...currentUser, points: currentUser.points + p };
       setCurrentUser(updated);
       sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(updated));
-
-      const users = JSON.parse(localStorage.getItem('ibra_dama_users') || '[]');
-      const userIndex = users.findIndex((u: any) => u.id === currentUser.id);
-      if (userIndex !== -1) {
-        users[userIndex].points += p;
-        localStorage.setItem('ibra_dama_users', JSON.stringify(users));
-      }
     }
   };
 
