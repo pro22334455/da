@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DamaBoard, DamaPiece, User, Room } from '../types';
-import Lobby from '../Lobby';
+import Lobby from './Lobby';
 import { db, ref, onValue, update, remove, push } from '../firebaseService';
 
 interface DamaViewProps {
