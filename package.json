@@ -1,7 +1,7 @@
 {
-  "name": "lumina-dama-online",
+  "name": "ibra-dama-online",
   "version": "1.0.0",
-  "description": "لعبة دامة أونلاين متطورة مع نظام دردشة وذكاء اصطناعي عبر Vite",
+  "description": "لعبة دامة أونلاين متطورة من إبراهيم مع نظام دردشة صوتية",
   "main": "index.tsx",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,7 @@
   "keywords": [
     "dama",
     "multiplayer",
-    "gemini",
+    "ibra",
     "firebase",
     "vite"
   ],
