@@ -1,0 +1,10 @@
+
+{
+  "appId": "com.lumina.dama.ibra",
+  "appName": "Lumina Dama",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

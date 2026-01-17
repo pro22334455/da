@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Lumina Dama Online",
+  "description": "A sophisticated online multiplayer Dama game with real-time chat, voice, and point-based progression.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

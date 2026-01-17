@@ -1,0 +1,39 @@
+{
+  "name": "lumina-dama-online",
+  "version": "1.0.0",
+  "description": "لعبة دامة أونلاين متطورة مع نظام دردشة وذكاء اصطناعي",
+  "main": "index.tsx",
+  "scripts": {
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production",
+    "cap-init": "npx cap add android",
+    "cap-sync": "npx cap sync",
+    "android-build": "npm run build && npx cap sync && cd android && ./gradlew assembleDebug"
+  },
+  "keywords": [
+    "dama",
+    "multiplayer",
+    "gemini",
+    "firebase"
+  ],
+  "author": "Ibrahim",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@google/genai": "^1.37.0",
+    "firebase": "^10.8.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}
