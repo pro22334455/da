@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User } from './types';
 import DamaView from './components/DamaView';
@@ -14,18 +15,6 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = async (user: User) => {
-    // طلب الميكروفون هنا ضروري جداً لأنه استجابة لضغط زر (User Gesture)
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // نغلق المجرى فوراً، الإذن تم حفظه في المتصفح للجلسة الحالية
-        stream.getTracks().forEach(track => track.stop());
-        console.log("Mic Permission Secured");
-      }
-    } catch (err) {
-      console.warn("Mic permission denied or not available");
-    }
-
     setCurrentUser(user);
     sessionStorage.setItem('ibra_dama_current_user', JSON.stringify(user));
   };
