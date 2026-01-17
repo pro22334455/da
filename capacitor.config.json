@@ -1,6 +1,6 @@
 {
-  "appId": "com.lumina.dama.ibra",
-  "appName": "Lumina Dama",
+  "appId": "com.ibra.dama.online",
+  "appName": "Ibra Dama",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
