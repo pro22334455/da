@@ -1,11 +1,20 @@
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, push, update, remove, onDisconnect, get, Database } from "firebase/database";
-import { getAnalytics, Analytics } from "firebase/analytics";
+import { 
+  getDatabase, 
+  ref as firebaseRef, 
+  set as firebaseSet, 
+  onValue as firebaseOnValue, 
+  push as firebasePush, 
+  update as firebaseUpdate, 
+  remove as firebaseRemove, 
+  onDisconnect as firebaseOnDisconnect, 
+  get as firebaseGet,
+  Database
+} from "firebase/database";
 
 /**
  * إعدادات Firebase
- * ملاحظة هامة: يجب استبدال هذه القيم بقيم حقيقية من وحدة تحكم Firebase (Console).
- * تم استخدام ASCII فقط هنا لتجنب خطأ Headers constructor.
+ * ملاحظة: إذا كانت القيم افتراضية، سيعمل التطبيق في "الوضع التجريبي" (Mock Mode)
  */
 const firebaseConfig = {
   apiKey: "YOUR_FIREBASE_API_KEY_HERE",
@@ -13,45 +22,84 @@ const firebaseConfig = {
   databaseURL: "https://dama-ibra-default-rtdb.firebaseio.com",
   projectId: "dama-ibra",
   storageBucket: "dama-ibra.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID_HERE",
-  appId: "YOUR_APP_ID_HERE",
-  measurementId: "G-7Q81T7582J"
+  messagingSenderId: "SENDER_ID",
+  appId: "APP_ID"
 };
 
-// فحص ما إذا كانت الإعدادات مفعلة أم لا تزال افتراضية
-const isConfigValid = firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY_HERE" && 
-                     firebaseConfig.apiKey.length > 10;
+const isConfigValid = firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY_HERE" && firebaseConfig.apiKey.length > 10;
 
 let app: FirebaseApp | null = null;
-let db: Database | any = null;
-let analytics: Analytics | null = null;
+let realDb: Database | null = null;
 
 if (isConfigValid) {
   try {
     app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
-    if (typeof window !== 'undefined') {
-      analytics = getAnalytics(app);
-    }
+    realDb = getDatabase(app);
   } catch (error) {
-    console.warn("Firebase initialization failed. Check your config.", error);
+    console.error("Firebase Initialization Error:", error);
   }
-} else {
-  console.warn("Lumina Dama is running in 'Offline/Mock Mode'. Setup Firebase keys for multiplayer.");
-  // نظام وهمي (Mock) للسماح بتشغيل التطبيق دون توقف
-  db = {
-    ref: () => ({}),
-    onValue: () => () => {},
-    set: async () => {},
-    push: () => ({ key: 'mock_' + Date.now() }),
-    update: async () => {},
-    remove: async () => {},
-    onDisconnect: () => ({}),
-    get: async () => ({ exists: () => false, val: () => null })
-  };
 }
 
-export { db, analytics, ref, set, onValue, push, update, remove, onDisconnect, get };
+// كائن قاعدة البيانات المصدر
+export const db = isConfigValid ? realDb : { isMock: true };
+
+// دالة التحقق من أن المرجع حقيقي أم وهمي
+const isMockRef = (dbRef: any) => !dbRef || dbRef.isMock === true;
+
+export const ref = (database: any, path?: string) => {
+  if (!isConfigValid || !realDb) {
+    return { isMock: true, path, key: 'mock_ref' };
+  }
+  return firebaseRef(realDb, path);
+};
+
+export const set = (dbRef: any, value: any) => {
+  if (isMockRef(dbRef)) return Promise.resolve();
+  return firebaseSet(dbRef, value);
+};
+
+export const onValue = (dbRef: any, callback: (snapshot: any) => void) => {
+  if (isMockRef(dbRef)) return () => {};
+  return firebaseOnValue(dbRef, callback);
+};
+
+export const push = (dbRef: any, value?: any) => {
+  if (isMockRef(dbRef)) {
+    return { isMock: true, key: 'mock_push_' + Date.now() };
+  }
+  return firebasePush(dbRef, value);
+};
+
+export const update = (dbRef: any, values: any) => {
+  if (isMockRef(dbRef)) return Promise.resolve();
+  return firebaseUpdate(dbRef, values);
+};
+
+export const remove = (dbRef: any) => {
+  if (isMockRef(dbRef)) return Promise.resolve();
+  return firebaseRemove(dbRef);
+};
+
+export const get = (dbRef: any) => {
+  if (isMockRef(dbRef)) {
+    return Promise.resolve({
+      exists: () => false,
+      val: () => null
+    });
+  }
+  return firebaseGet(dbRef);
+};
+
+export const onDisconnect = (dbRef: any) => {
+  if (isMockRef(dbRef)) {
+    return {
+      remove: () => Promise.resolve(),
+      set: () => Promise.resolve(),
+      update: () => Promise.resolve()
+    };
+  }
+  return firebaseOnDisconnect(dbRef);
+};
 
 export const updateGlobalUserPoints = async (userId: string, pointsToAdd: number) => {
   if (!isConfigValid) return;
